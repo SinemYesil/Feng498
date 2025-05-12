@@ -1,77 +1,102 @@
 import os
 import torch
-from PIL import Image
-from torchvision import transforms
-from sklearn.metrics import accuracy_score
-from tqdm import tqdm
+import pandas as pd
+import numpy as np
 from ultralytics import YOLO
+from torchvision import datasets, transforms
+from torch.utils.data import DataLoader
+from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score, roc_curve
+import matplotlib.pyplot as plt
+import seaborn as sns
 
-class YOLOv8Classifier:
-    def __init__(self, model_path, class_map_path, test_root, img_size=640):
-        self.model_path = model_path
-        self.class_map_path = class_map_path
-        self.test_root = test_root
-        self.img_size = img_size
-        self.class_map = torch.load(self.class_map_path)
-        self.idx_to_class = {v: k for k, v in self.class_map.items()}
-        self.class_to_idx = {k: v for v, k in self.idx_to_class.items()}
-        self.model = YOLO(self.model_path)  # Load YOLOv8 model
+# 📁 Path ayarları
+test_path = 'C:/Users/ceren/PycharmProjects/Feng498/dataset/test'
+model_path = 'C:/Users/ceren/PycharmProjects/Feng498/yolov8/outputs/train_logs/yolov8_classifier/weights/best.pt'
+output_dir = 'C:/Users/ceren/PycharmProjects/Feng498/yolov8/outputs/predict_logs'
+os.makedirs(output_dir, exist_ok=True)
 
-    def evaluate_all_test_images(self):
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.model.to(device)
-        self.model.eval()
+# 🧠 Model yükle
+model = YOLO(model_path)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        y_true, y_pred = [], []
+# 🔍 Test verisini yükle
+transform = transforms.Compose([transforms.Resize((224, 224)), transforms.ToTensor()])
+test_dataset = datasets.ImageFolder(test_path, transform=transform)
+test_loader = DataLoader(test_dataset, batch_size=16, shuffle=False)
+class_map = test_dataset.class_to_idx
+inv_map = {v: k for k, v in class_map.items()}
 
-        for cls_name in os.listdir(self.test_root):
-            cls_dir = os.path.join(self.test_root, cls_name)
-            if not os.path.isdir(cls_dir):
-                continue
-            true_label = self.class_to_idx[cls_name]
+# 🔎 Tahmin yap
+all_preds, all_labels, all_probs = [], [], []
+for images, labels in test_loader:
+    images = images.to(device)
+    results = model(images, verbose=False)
 
-            for img_name in tqdm(os.listdir(cls_dir), desc=f"🔍 {cls_name} sınıfı test ediliyor"):
-                img_path = os.path.join(cls_dir, img_name)
-                image = Image.open(img_path).convert("RGB")
-                input_tensor = self.transform_image(image)
+    for result, label in zip(results, labels):
+        probs = result.probs
+        if probs is not None:
+            probs_tensor = probs.data  # 🔧 DÜZELTME: Tensor olarak al
+            pred = torch.argmax(probs_tensor).item()
+            prob = probs_tensor[1].item() if len(probs_tensor) == 2 else torch.max(probs_tensor).item()
+        else:
+            pred = -1
+            prob = 0
 
-                # Perform inference with YOLOv8
-                with torch.no_grad():
-                    results = self.model(input_tensor)
-                    pred = results.pred[0]  # Get predictions for the first image
+        all_preds.append(pred)
+        all_labels.append(label.item())
+        all_probs.append(prob)
 
-                    if len(pred) > 0:
-                        # Assuming single-class detection
-                        pred_class = pred[:, -1].cpu().numpy().astype(int)
-                        pred_label = pred_class[0]  # Choose the most confident prediction
-                    else:
-                        pred_label = -1  # No detection, set to invalid class
+# 🧾 Değerlendirme raporu
+report = classification_report(all_labels, all_preds, target_names=list(class_map.keys()), output_dict=True)
+pd.DataFrame(report).transpose().to_csv(os.path.join(output_dir, "classification_report.csv"), index=True)
 
-                y_true.append(true_label)
-                y_pred.append(pred_label)
+# 🔢 Ek metrikler
+cm = confusion_matrix(all_labels, all_preds)
+tn, fp, fn, tp = cm.ravel() if cm.size == 4 else (0, 0, 0, 0)
+specificity = tn / (tn + fp) if (tn + fp) else 0
+sensitivity = tp / (tp + fn) if (tp + fn) else 0
+accuracy = np.mean(np.array(all_preds) == np.array(all_labels))
 
-        accuracy = accuracy_score(y_true, y_pred)
+summary_data = {
+    "Accuracy": [accuracy],
+    "Sensitivity": [sensitivity],
+    "Specificity": [specificity]
+}
+if len(class_map) == 2:
+    auc_score = roc_auc_score(all_labels, all_probs)
+    summary_data["ROC_AUC"] = [auc_score]
 
-        correct = sum([1 for t, p in zip(y_true, y_pred) if t == p])
-        total = len(y_true)
-        print(f"\n📊 Toplam test görüntüsü: {total}")
-        print(f"✅ Doğru tahmin: {correct}")
-        print(f"❌ Yanlış tahmin: {total - correct}")
-        print(f"🎯 Doğruluk oranı: {accuracy * 100:.2f}%")
+pd.DataFrame(summary_data).to_csv(os.path.join(output_dir, "metrics_summary.csv"), index=False)
 
-    def transform_image(self, image):
-        transform = transforms.Compose([
-            transforms.Resize((self.img_size, self.img_size)),
-            transforms.ToTensor()
-        ])
-        return transform(image).unsqueeze(0)  # Add batch dimension
+# 🎨 Confusion Matrix
+plt.figure(figsize=(6, 5))
+sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
+            xticklabels=class_map.keys(), yticklabels=class_map.keys())
+plt.title('Confusion Matrix')
+plt.xlabel('Predicted')
+plt.ylabel('True')
+plt.tight_layout()
+plt.savefig(os.path.join(output_dir, 'confusion_matrix.png'))
+plt.close()
 
-# 📁 Ayarlar
-test_root = "C:/Users/ceren/PycharmProjects/Feng498/dataset/test"
-model_path = "../Feng498/yolov8/best_model.pt"  # ✅ YOLO model path
-class_map_path = "../Feng498/yolov8/class_map.pth"  # ✅ class_map path
+# 📈 ROC Curve (sadece 2 sınıf için)
+if len(class_map) == 2:
+    fpr, tpr, _ = roc_curve(all_labels, all_probs)
+    plt.figure()
+    plt.plot(fpr, tpr, label=f'AUC = {auc_score:.2f}')
+    plt.plot([0, 1], [0, 1], 'k--')
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('ROC Curve')
+    plt.legend(loc='lower right')
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, 'roc_curve.png'))
+    plt.close()
 
-# 🚀 Çalıştır
-if __name__ == "__main__":
-    yolo_classifier = YOLOv8Classifier(model_path=model_path, class_map_path=class_map_path, test_root=test_root)
-    yolo_classifier.evaluate_all_test_images()
+# ===============================
+# 📢 Konsola Özet Yazdır
+# ===============================
+print(f"\n📊 Toplam test görüntüsü: {len(all_labels)}")
+print(f"✅ Doğru tahmin: {sum(np.array(all_preds) == np.array(all_labels))}")
+print(f"❌ Yanlış tahmin: {len(all_labels) - sum(np.array(all_preds) == np.array(all_labels))}")
+print(f"🎯 Doğruluk oranı: {accuracy * 100:.2f}%")

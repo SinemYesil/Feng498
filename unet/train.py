@@ -1,3 +1,4 @@
+
 import os
 import csv
 import torch
@@ -12,7 +13,6 @@ import seaborn as sns
 import numpy as np
 from tqdm import tqdm
 
-# 🔧 U-Net Encoder Classifier
 class UNetEncoderClassifier(nn.Module):
     def __init__(self, num_classes=2):
         super(UNetEncoderClassifier, self).__init__()
@@ -51,33 +51,40 @@ class UNetEncoderClassifier(nn.Module):
         x = self.classifier(x)
         return x
 
-# 📁 Dataset ayarları
-base_path = "C:/Users/ceren/PycharmProjects/Feng498/dataset/augmented_train"
+def smooth_curve(points, factor=0.8):
+    smoothed = []
+    for point in points:
+        if smoothed:
+            smoothed.append(smoothed[-1] * factor + point * (1 - factor))
+        else:
+            smoothed.append(point)
+    return smoothed
+
+# Paths
+base_path = r"C:/Users/ceren/PycharmProjects/Feng498/dataset/augmented_train"
+output_dir = r"C:/Users/ceren/PycharmProjects/Feng498/unet/outputs"
+class_map_path = os.path.join(output_dir, "class_map.pth")
+best_model_path = os.path.join(output_dir, "best_model.pth")
+fold_metrics_path = os.path.join(output_dir, "fold_metrics.csv")
+
+os.makedirs(os.path.join(output_dir, "confusion_matrices"), exist_ok=True)
+os.makedirs(os.path.join(output_dir, "roc_curves"), exist_ok=True)
+os.makedirs(os.path.join(output_dir, "loss_plots"), exist_ok=True)
+
 transform = transforms.Compose([transforms.Resize((224, 224)), transforms.ToTensor()])
 dataset = datasets.ImageFolder(base_path, transform=transform)
 class_map = dataset.class_to_idx
-torch.save(class_map, "C:/Users/ceren/PycharmProjects/Feng498/unet/class_map.pth")  # ✅ class_map aynı klasöre kaydedildi
+torch.save(class_map, class_map_path)
 
-# 📁 Çıktı klasörlerini oluştur
-output_dir = "C:/Users/ceren/PycharmProjects/Feng498/unet/outputs"
-os.makedirs(f"{output_dir}/confusion_matrices", exist_ok=True)
-os.makedirs(f"{output_dir}/roc_curves", exist_ok=True)
-os.makedirs(f"{output_dir}/loss_plots", exist_ok=True)
-
-# 📊 Metrikler ve ayarlar
 k_folds = 5
 skf = StratifiedKFold(n_splits=k_folds, shuffle=True, random_state=42)
 targets = [label for _, label in dataset.samples]
-fold_metrics = { "accuracy": [], "precision": [], "recall": [], "f1": [], "roc_auc": [], "sensitivity": [], "specificity": [] }
-csv_data = []
 
+fold_metrics = {key: [] for key in ["accuracy", "precision", "recall", "f1", "roc_auc", "specificity", "sensitivity"]}
+csv_data = []
 best_f1 = 0
 best_model_state = None
 
-train_loss_history = []
-val_loss_history = []
-
-# 🔁 Fold eğitim döngüsü
 for fold, (train_idx, val_idx) in enumerate(skf.split(np.zeros(len(targets)), targets)):
     print(f"\n🌀 Fold {fold + 1}/{k_folds}")
     train_loader = DataLoader(Subset(dataset, train_idx), batch_size=16, shuffle=True)
@@ -85,17 +92,17 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(np.zeros(len(targets)), ta
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = UNetEncoderClassifier(num_classes=len(class_map)).to(device)
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
-    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-4)
+    criterion = nn.CrossEntropyLoss(label_smoothing=0.2)
 
     fold_train_losses = []
     fold_val_losses = []
 
     best_val_loss = float('inf')
-    patience = 3
+    patience = 10
     patience_counter = 0
 
-    for epoch in range(50):
+    for epoch in range(100):
         model.train()
         running_loss = 0.0
         for images, labels in tqdm(train_loader, desc=f"Epoch {epoch + 1}"):
@@ -120,7 +127,7 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(np.zeros(len(targets)), ta
         epoch_val_loss = val_loss / len(val_loader.dataset)
         fold_val_losses.append(epoch_val_loss)
 
-        print(f"Epoch {epoch+1}: Train Loss = {epoch_train_loss:.4f}, Val Loss = {epoch_val_loss:.4f}")
+        print(f"Epoch {epoch + 1}: Train Loss = {epoch_train_loss:.4f}, Val Loss = {epoch_val_loss:.4f}")
         if epoch_val_loss < best_val_loss:
             best_val_loss = epoch_val_loss
             patience_counter = 0
@@ -130,82 +137,73 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(np.zeros(len(targets)), ta
                 print(f"⏹️ Early stopping at epoch {epoch + 1}")
                 break
 
-    train_loss_history.append(fold_train_losses)
-    val_loss_history.append(fold_val_losses)
-
     model.eval()
     all_preds, all_labels, all_probs = [], [], []
-
     with torch.no_grad():
         for images, labels in val_loader:
             images = images.to(device)
             outputs = model(images)
-            probs = torch.softmax(outputs, dim=1)[:, 1]
-            preds = torch.argmax(outputs, dim=1).cpu().numpy()
-            all_probs.extend(probs.cpu().numpy())
+            probs = torch.softmax(outputs, dim=1)
+            preds = torch.argmax(probs, dim=1).cpu().numpy()
+            if probs.shape[1] == 2:
+                all_probs.extend(probs[:, 1].cpu().numpy())
+            else:
+                all_probs.extend(probs.max(dim=1)[0].cpu().numpy())
             all_preds.extend(preds)
             all_labels.extend(labels.numpy())
 
     acc = accuracy_score(all_labels, all_preds)
-    prec = precision_score(all_labels, all_preds)
-    rec = recall_score(all_labels, all_preds)
-    f1 = f1_score(all_labels, all_preds)
+    prec = precision_score(all_labels, all_preds, average='macro', zero_division=0)
+    rec = recall_score(all_labels, all_preds, average='macro', zero_division=0)
+    f1 = f1_score(all_labels, all_preds, average='macro', zero_division=0)
     roc_auc = roc_auc_score(all_labels, all_probs)
 
-    cm = confusion_matrix(all_labels, all_preds)
-    tn, fp, fn, tp = cm.ravel()
-    sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0
+    tn, fp, fn, tp = confusion_matrix(all_labels, all_preds).ravel()
     specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
+    sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0
 
-    fold_metrics["accuracy"].append(acc)
-    fold_metrics["precision"].append(prec)
-    fold_metrics["recall"].append(rec)
-    fold_metrics["f1"].append(f1)
-    fold_metrics["roc_auc"].append(roc_auc)
-    fold_metrics["sensitivity"].append(sensitivity)
-    fold_metrics["specificity"].append(specificity)
-
-    csv_data.append([fold + 1, acc, prec, rec, f1, roc_auc, sensitivity, specificity])
+    for key, val in zip(fold_metrics.keys(), [acc, prec, rec, f1, roc_auc, specificity, sensitivity]):
+        fold_metrics[key].append(val)
+    csv_data.append([fold + 1, acc, prec, rec, f1, roc_auc, specificity, sensitivity])
 
     if f1 > best_f1:
         best_f1 = f1
         best_model_state = model.state_dict()
 
+    cm = confusion_matrix(all_labels, all_preds)
     sns.heatmap(cm, annot=True, fmt='d', cmap="Blues", xticklabels=class_map.keys(), yticklabels=class_map.keys())
     plt.title(f"Fold {fold+1} - Confusion Matrix")
-    plt.xlabel("Predicted")
-    plt.ylabel("True")
-    plt.savefig(f"{output_dir}/confusion_matrices/confusion_matrix_fold{fold+1}.png")
+    plt.savefig(os.path.join(output_dir, "confusion_matrices", f"confusion_matrix_fold{fold+1}.png"))
     plt.clf()
 
     fpr, tpr, _ = roc_curve(all_labels, all_probs)
     plt.plot(fpr, tpr, label=f"Fold {fold+1} AUC={roc_auc:.2f}")
     plt.plot([0, 1], [0, 1], linestyle="--", color='gray')
+    plt.title("ROC Curve")
     plt.xlabel("False Positive Rate")
     plt.ylabel("True Positive Rate")
-    plt.title("ROC Curve")
     plt.legend()
-    plt.savefig(f"{output_dir}/roc_curves/roc_curve_fold{fold+1}.png")
+    plt.savefig(os.path.join(output_dir, "roc_curves", f"roc_curve_fold{fold+1}.png"))
     plt.clf()
 
-    plt.plot(fold_train_losses, label="Train Loss")
-    plt.plot(fold_val_losses, label="Validation Loss", linestyle='--')
-    plt.title(f"Loss Curve - Fold {fold+1}")
+    plt.plot(smooth_curve(fold_train_losses), label="Train Loss")
+    plt.plot(smooth_curve(fold_val_losses), label="Validation Loss", linestyle='--')
+    plt.title(f"Loss Curve - Fold {fold+1} (Smoothed)")
     plt.xlabel("Epoch")
     plt.ylabel("Loss")
     plt.legend()
-    plt.savefig(f"{output_dir}/loss_plots/loss_curve_fold{fold+1}.png")
+    plt.savefig(os.path.join(output_dir, "loss_plots", f"loss_curve_fold{fold+1}.png"))
     plt.clf()
 
-torch.save(best_model_state, "C:/Users/ceren/PycharmProjects/Feng498/unet/best_model.pth")  # ✅ best_model aynı klasöre kaydedildi
-print(f"\n💾 En iyi model başarıyla 'C:/Users/ceren/PycharmProjects/Feng498/unet/best_model.pth' olarak kaydedildi (En iyi F1: {best_f1:.4f})")
+torch.save(best_model_state, best_model_path)
+print(f"\n💾 En iyi model başarıyla '{best_model_path}' olarak kaydedildi (En iyi F1: {best_f1:.4f})")
 
-with open(f"{output_dir}/fold_metrics.csv", "w", newline="") as f:
+with open(fold_metrics_path, "w", newline="") as f:
     writer = csv.writer(f)
-    writer.writerow(["Fold", "Accuracy", "Precision", "Recall", "F1", "ROC_AUC", "Sensitivity", "Specificity"])
+    writer.writerow(["Fold", "Accuracy", "Precision", "Recall", "F1", "ROC_AUC", "Specificity", "Sensitivity"])
     writer.writerows(csv_data)
-print(f"📄 Fold metrikleri '{output_dir}/fold_metrics.csv' olarak kaydedildi.")
 
+print(f"\n📄 Fold metrikleri '{fold_metrics_path}' olarak kaydedildi.")
 print("\n📋 Ortalama Sonuçlar:")
 for metric, values in fold_metrics.items():
     print(f"{metric.capitalize()}: {np.mean(values):.4f}")
