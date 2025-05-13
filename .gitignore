@@ -1,0 +1,128 @@
+# =========================
+# 🐍 Python
+# =========================
+__pycache__/
+*.py[cod]
+*.so
+*.pyd
+*.pyo
+*.pkl
+*.h5
+*.pt
+*.pth
+*.onnx
+*.tflite
+*.log
+*.db
+*.sqlite3
+*.bak
+*.swp
+*.tmp
+*.orig
+.env
+.venv/
+venv/
+ENV/
+env/
+pip-log.txt
+*.pyproj
+*.idea/
+*.vscode/
+
+# =========================
+# 📁 Model & Checkpoint Files
+# =========================
+runs/
+weights/
+checkpoints/
+models/
+output/
+outputs/
+logs/
+*.ckpt
+*.best.pt
+*.last.pt
+*.engine
+*.trt
+*.savedmodel
+
+# =========================
+# 📁 Jupyter / Colab
+# =========================
+.ipynb_checkpoints/
+*.ipynb
+colab_output/
+*/.ipynb_checkpoints/
+
+# =========================
+# 🧪 Datasets
+# =========================
+datasets/
+dataset/
+data/
+*/augmented_train/
+*/test/
+*/split/
+*/renamed/
+*.zip
+*.tar.gz
+*.tar
+*.rar
+
+# =========================
+# ⚙️ PyTorch & TensorBoard
+# =========================
+*.t7
+*.log.*
+event*
+tensorboard/
+
+# =========================
+# 🧪 YOLOv8 Specific
+# =========================
+ultralytics/cfg/
+ultralytics/assets/
+yoloDataset/
+yolo_results/
+*.yaml
+*.yml
+
+# =========================
+# 📦 Packaging & Build
+# =========================
+build/
+dist/
+*.egg-info/
+*.spec
+
+# =========================
+# 🖼️ Images & Plots
+# =========================
+*.png
+*.jpg
+*.jpeg
+*.bmp
+*.svg
+*.gif
+*.tiff
+*.webp
+preview/
+predictions/
+confusion_matrix.png
+roc_curve.png
+
+# =========================
+# 💻 IDE - PyCharm, VSCode
+# =========================
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# =========================
+# 📂 OS-Specific
+# =========================
+.DS_Store
+Thumbs.db
+ehthumbs.db
+desktop.ini
