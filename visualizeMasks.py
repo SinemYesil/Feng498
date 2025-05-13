@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import random
 
 # 📁 Ana dataset yolu ve preview yolu
-base_dataset_dir = Path("C:/Users/ceren/PycharmProjects/Feng498/dataset")
+base_dataset_dir = Path("C:/Users/yilma/Desktop/Feng498/dataset")
 preview_dir = base_dataset_dir / "preview"
 preview_dir.mkdir(exist_ok=True, parents=True)
 
@@ -27,27 +27,27 @@ for cls in classes:
     for img_path in selected_images:
         original_img = load_image_as_array(img_path)
 
-        # Brightness maskesi (maksimum kanal değeri ile)
-        brightness_mask = np.max(original_img, axis=2, keepdims=True)
+        # Contrast maskesi (maksimum kanal değeri ile)
+        contrast_mask = np.max(original_img, axis=2, keepdims=True)
 
-        # Brightness çarpımı
-        brightness_img = np.clip(original_img * brightness_mask, 0, 1)
+        # Contrast çarpımı
+        contrast_img = np.clip(original_img * contrast_mask, 0, 1)
 
         examples.append({
             "class": cls,
             "original": original_img,
-            "brightness": brightness_img
+            "contrast": contrast_img
         })
 
 # 🎨 Grafik oluştur
 fig, axs = plt.subplots(len(examples), 2, figsize=(12, len(examples)*5))
-titles = ["Original", "Original x Brightness Mask"]
+titles = ["Original", "Original x Contrast Mask"]
 
 for i, ex in enumerate(examples):
     label = ex["class"]
     variations = [
         ex["original"],
-        ex["brightness"]
+        ex["contrast"]
     ]
 
     for j in range(2):
@@ -60,10 +60,10 @@ for i, ex in enumerate(examples):
                            ha='right', va='center', transform=axs[i, j].transAxes, rotation=90)
 
 # Genel başlık
-plt.suptitle("Preprocessing Visualization (Original x Brightness Only)", fontsize=18, fontweight='bold')
+plt.suptitle("Preprocessing Visualization (Original x Contrast Only)", fontsize=18, fontweight='bold')
 plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 
 # Kaydet ve göster
-output_path = preview_dir / "visualization_brightness_only.png"
+output_path = preview_dir / "visualization_contrast_only.png"
 plt.savefig(output_path, dpi=300)
 plt.show()

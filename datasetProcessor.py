@@ -31,7 +31,7 @@ class DatasetProcessor:
             folder.mkdir(parents=True, exist_ok=True)
 
     @staticmethod
-    def compute_brightness_mask(image):
+    def apply_contrast_mask(image):
         n, m, _ = image.shape
         BR = np.zeros((n, m))
         BG = np.zeros((n, m))
@@ -62,7 +62,7 @@ class DatasetProcessor:
                         img = img.convert("RGB").resize((224, 224))
                         img_np = np.asarray(img, dtype=np.float32) / 255.0
 
-                        Ib = self.compute_brightness_mask(img_np)
+                        Ib = self.apply_contrast_mask(img_np)
                         Ips = np.clip(img_np * Ib, 0, 1)
 
                         Image.fromarray((Ips * 255).astype(np.uint8)).save(
