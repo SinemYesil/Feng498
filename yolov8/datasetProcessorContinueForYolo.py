@@ -25,7 +25,7 @@ class DatasetProcessorContinueForYolo:
             new_cls_dir = self.renamed_dir / cls.name
             new_cls_dir.mkdir(parents=True, exist_ok=True)
             for i, img in enumerate(sorted(images), start=1):
-                new_name = f"{cls.name}_{i:04d}{img.suffix.lower()}"
+                new_name = f"{cls.name}_{i: 04d}{img.suffix.lower()}"
                 new_path = new_cls_dir / new_name
                 if new_path.exists():
                     print(f"⚠️ Hedef dosya zaten mevcut: {new_path}. Atlanıyor.")
@@ -62,8 +62,8 @@ class DatasetProcessorContinueForYolo:
 # 📌 Örnek kullanım
 if __name__ == "__main__":
     processor = DatasetProcessorContinueForYolo(
-        source_dir="C:/Users/Ceren/PycharmProjects/Feng498/dataset/augmented_train",
-        yolov8_dataset_dir="C:/Users/Ceren/PycharmProjects/Feng498/yolov8/dataset",
+        source_dir="C:/Users/ceren/PycharmProjects/Feng498/dataset/augmented_train",
+        yolov8_dataset_dir="C:/Users/ceren/PycharmProjects/Feng498/yolov8/dataset",
         split_ratio=0.8
     )
     processor.prepare()

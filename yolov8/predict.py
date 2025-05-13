@@ -17,6 +17,7 @@ from sklearn.metrics import (
 import pandas as pd
 from ultralytics import YOLO
 
+
 def set_seed(seed=42):
     random.seed(seed)
     np.random.seed(seed)
@@ -26,7 +27,9 @@ def set_seed(seed=42):
     torch.backends.cudnn.benchmark = False
     print(f"🧬 Seed set to: {seed}")
 
+
 set_seed(42)
+
 
 class Predict:
     def __init__(self, model_path, test_dir, output_dir):
@@ -36,16 +39,27 @@ class Predict:
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
         self.model = YOLO(str(self.model_path))
-        self.class_names = self.model.names
+        self.class_names = self.model.names  # {0: 'AMD', 1: 'NO'}
+
+        self._rename_test_class_folders()
 
         self.all_labels = []
         self.all_preds = []
         self.all_probs = []
 
+    def _rename_test_class_folders(self):
+        print("🔤 Test klasör isimleri yeniden adlandırılıyor...")
+        for class_idx, class_name in self.class_names.items():
+            old_path = self.test_dir / class_name
+            new_path = self.test_dir / str(class_idx)
+            if old_path.exists() and not new_path.exists():
+                old_path.rename(new_path)
+                print(f"🔁 {old_path} → {new_path}")
+
     def evaluate(self):
         print("🔍 Starting prediction on test images...")
-        for class_idx, class_name in enumerate(self.class_names):
-            class_folder = self.test_dir / str(class_name)
+        for class_idx, class_name in self.class_names.items():
+            class_folder = self.test_dir / str(class_idx)
             if not class_folder.exists():
                 print(f"⚠️ Skipping missing class folder: {class_folder}")
                 continue
@@ -71,9 +85,12 @@ class Predict:
                 except Exception as e:
                     print(f"❌ Error processing {img_path}: {e}")
 
-        self._save_classification_report()
-        self._save_confusion_matrix()
-        self._save_roc_curve()
+        if self.all_labels:
+            self._save_classification_report()
+            self._save_confusion_matrix()
+            self._save_roc_curve()
+        else:
+            print("⚠️ Test verisi bulunamadı veya işlenemedi. Hiçbir çıktı oluşturulmadı.")
 
     def _save_classification_report(self):
         acc = accuracy_score(self.all_labels, self.all_preds)
@@ -102,10 +119,10 @@ class Predict:
             f.write(report)
         print(f"📄 Classification report saved to: {report_path}")
 
-        print(f"\n📊 Total Test Images: {len(self.all_labels)}")
-        print(f"✅ Correct Predictions: {sum(p == l for p, l in zip(self.all_preds, self.all_labels))}")
-        print(f"❌ Incorrect Predictions: {sum(p != l for p, l in zip(self.all_preds, self.all_labels))}")
-        print(f"🎯 Accuracy: {acc * 100:.2f}%")
+        print(f"\n📊 Toplam test görüntüsü: {len(self.all_labels)}")
+        print(f"✅ Doğru tahmin: {sum(p == l for p, l in zip(self.all_preds, self.all_labels))}")
+        print(f"❌ Yanlış tahmin: {sum(p != l for p, l in zip(self.all_preds, self.all_labels))}")
+        print(f"🎯 Doğruluk oranı: {acc * 100:.2f}%")
         print(f"📁 Metrics and visuals saved to: {self.output_dir}")
 
     def _save_confusion_matrix(self):
@@ -145,11 +162,12 @@ class Predict:
         else:
             print("ℹ️ ROC curve only supported for binary classification.")
 
+
 # 📌 Örnek kullanım
 if __name__ == "__main__":
     predictor = Predict(
-        model_path="C:/Users/Ceren/PycharmProjects/Feng498/yolov8/outputs/yolov8_cls_run/best.pt",
-        test_dir="C:/Users/Ceren/PycharmProjects/Feng498/dataset/test",
-        output_dir="C:/Users/Ceren/PycharmProjects/Feng498/yolov8/predictions"
+        model_path="C:/Users/ceren/PycharmProjects/Feng498/yolov8/outputs/yolov8_cls_run/weights/best.pt",
+        test_dir="C:/Users/ceren/PycharmProjects/Feng498/dataset/test",
+        output_dir="C:/Users/ceren/PycharmProjects/Feng498/yolov8/predictions"
     )
     predictor.evaluate()
