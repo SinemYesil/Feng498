@@ -86,8 +86,8 @@ best_model_state = None
 
 for fold, (train_idx, val_idx) in enumerate(skf.split(np.zeros(len(targets)), targets)):
     print(f"\n🌀 Fold {fold + 1}/{k_folds}")
-    train_loader = DataLoader(Subset(dataset, train_idx), batch_size=16, shuffle=True)
-    val_loader = DataLoader(Subset(dataset, val_idx), batch_size=16, shuffle=False)
+    train_loader = DataLoader(Subset(dataset, train_idx), batch_size=32, shuffle=True)
+    val_loader = DataLoader(Subset(dataset, val_idx), batch_size=32, shuffle=False)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = UNetEncoderClassifier(num_classes=len(class_map)).to(device)
@@ -98,7 +98,7 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(np.zeros(len(targets)), ta
     fold_val_losses = []
 
     best_val_loss = float('inf')
-    patience = 10
+    patience = 50
     patience_counter = 0
 
     for epoch in range(100):
