@@ -15,7 +15,7 @@ from pathlib import Path
 # ✅ Yol tanımları (dinamik)
 project_root = Path(__file__).resolve().parents[1]
 base_path = project_root / "dataset" / "augmented_train"
-output_dir = project_root / "outputs" / "train"
+output_dir = project_root / "unet" / "outputs" / "train"
 
 # ✅ Yol var mı kontrolü
 if not base_path.exists():
