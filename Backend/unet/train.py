@@ -1,4 +1,3 @@
-import os
 import csv
 import torch
 import torch.nn as nn
@@ -14,9 +13,9 @@ from tqdm import tqdm
 from pathlib import Path
 
 # ✅ Yol tanımları (dinamik)
-project_root = Path(__file__).resolve().parents[1]  # Backend klasörü
+project_root = Path(__file__).resolve().parents[1]
 base_path = project_root / "dataset" / "augmented_train"
-output_dir = project_root /  "outputs" / "train"
+output_dir = project_root / "outputs" / "train"
 
 # ✅ Yol var mı kontrolü
 if not base_path.exists():
@@ -106,7 +105,7 @@ targets = dataset.targets
 
 fold_metrics = {key: [] for key in ["accuracy", "precision", "recall", "f1", "roc_auc", "specificity", "sensitivity"]}
 csv_data = []
-best_f1 = 0
+best_f1 = 0.0
 best_model_state = None
 
 # ✅ K-Fold Eğitim
@@ -122,9 +121,14 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(indices, targets)):
     criterion = nn.CrossEntropyLoss(label_smoothing=0.05)
 
     fold_train_losses, fold_val_losses = [], []
-    best_val_f1 = 0
+    best_val_f1 = 0.0
     patience = 10
     patience_counter = 0
+
+    all_preds: list[int] = []
+    all_labels: list[int] = []
+    all_probs: list[float] = []
+    val_f1: float = 0.0
 
     for epoch in range(100):
         model.train()
@@ -143,7 +147,10 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(indices, targets)):
         # ✅ Validation
         model.eval()
         val_loss = 0.0
-        all_preds, all_labels, all_probs = [], [], []
+        all_preds.clear()
+        all_labels.clear()
+        all_probs.clear()
+
         with torch.no_grad():
             for images, labels in val_loader:
                 images, labels = images.to(device), labels.to(device)
@@ -183,14 +190,14 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(indices, targets)):
     f1 = val_f1
     try:
         roc_auc = roc_auc_score(all_labels, all_probs)
-    except:
-        roc_auc = 0
+    except ValueError:
+        roc_auc = 0.0
     try:
         tn, fp, fn, tp = confusion_matrix(all_labels, all_preds).ravel()
-        specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
-        sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0
-    except:
-        specificity = sensitivity = 0
+        specificity = tn / (tn + fp) if (tn + fp) > 0 else 0.0
+        sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+    except ValueError:
+        specificity = sensitivity = 0.0
 
     for k, v in zip(fold_metrics.keys(), [acc, prec, rec, f1, roc_auc, specificity, sensitivity]):
         fold_metrics[k].append(v)

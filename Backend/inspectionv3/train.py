@@ -1,4 +1,3 @@
-import os
 import csv
 import torch
 import torch.nn as nn
@@ -17,29 +16,31 @@ import numpy as np
 from tqdm import tqdm
 from pathlib import Path
 
-# ✅ Proje kök klasörü
+# ✅ Proje kök klasörü ve yol tanımları
 project_root = Path(__file__).resolve().parents[1]
 base_path = project_root / "dataset" / "augmented_train"
 output_dir = project_root / "inspectionv3" / "outputs" / "train"
 
-# ✅ Yol kontrol ve klasör oluşturma
+# ✅ Yol kontrol
 if not base_path.exists():
     raise FileNotFoundError(f"❌ Dataset dizini bulunamadı: {base_path}")
 
+# ✅ Klasör oluştur
 (output_dir / "confusion_matrices").mkdir(parents=True, exist_ok=True)
 (output_dir / "roc_curves").mkdir(parents=True, exist_ok=True)
 (output_dir / "loss_plots").mkdir(parents=True, exist_ok=True)
+
 class_map_path = output_dir / "class_map.pth"
 best_model_path = output_dir / "best_model.pth"
 fold_metrics_path = output_dir / "fold_metrics.csv"
 
-# ✅ InceptionV3Classifier (güncel sürüm)
+# ✅ InceptionV3Classifier güncel
 class InceptionV3Classifier(nn.Module):
     def __init__(self, num_classes: int = 2):
         super().__init__()
         weights = Inception_V3_Weights.DEFAULT
         self.backbone = inception_v3(weights=weights, aux_logits=True)
-        self.backbone.AuxLogits.fc = nn.Identity()  # Yardımcı çıkışı devre dışı bırak
+        self.backbone.AuxLogits.fc = nn.Identity()
 
         in_features = self.backbone.fc.in_features
         self.backbone.fc = nn.Sequential(
@@ -65,7 +66,7 @@ def smooth_curve(points, factor=0.8):
             smoothed.append(point)
     return smoothed
 
-# ✅ Transform tanımı
+# ✅ Transform
 transform = transforms.Compose([
     transforms.Resize((299, 299)),
     transforms.RandomHorizontalFlip(),
@@ -74,7 +75,7 @@ transform = transforms.Compose([
     transforms.ToTensor(),
 ])
 
-# ✅ Dataset yükle
+# ✅ Dataset
 dataset = datasets.ImageFolder(base_path, transform=transform)
 class_map = dataset.class_to_idx
 torch.save(class_map, class_map_path)
@@ -86,7 +87,7 @@ targets = dataset.targets
 
 fold_metrics = {k: [] for k in ["accuracy", "precision", "recall", "f1", "roc_auc", "specificity", "sensitivity"]}
 csv_data = []
-best_f1 = 0
+best_f1: float = 0.0
 best_model_state = None
 
 # ✅ K-Fold Eğitim
@@ -101,10 +102,15 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(indices, targets)):
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=3, factor=0.5)
     criterion = nn.CrossEntropyLoss(label_smoothing=0.05)
 
-    best_val_f1 = 0
-    patience_counter = 0
+    best_val_f1: float = 0.0
     patience = 10
+    patience_counter = 0
     fold_train_losses, fold_val_losses = [], []
+
+    all_preds: list[int] = []
+    all_labels: list[int] = []
+    all_probs: list[float] = []
+    val_f1: float = 0.0
 
     for epoch in range(100):
         model.train()
@@ -121,9 +127,13 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(indices, targets)):
         epoch_train_loss = running_loss / len(train_idx)
         fold_train_losses.append(epoch_train_loss)
 
+        # ✅ Validation
         model.eval()
         val_loss = 0.0
-        all_preds, all_labels, all_probs = [], [], []
+        all_preds.clear()
+        all_labels.clear()
+        all_probs.clear()
+
         with torch.no_grad():
             for images, labels in val_loader:
                 images, labels = images.to(device), labels.to(device)
@@ -153,21 +163,21 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(indices, targets)):
                 print("⏹️ Early stopping.")
                 break
 
-    # ✅ Metrik hesaplama
+    # ✅ Metrikler
     acc = accuracy_score(all_labels, all_preds)
     prec = precision_score(all_labels, all_preds, average='macro', zero_division=0)
     rec = recall_score(all_labels, all_preds, average='macro', zero_division=0)
     f1 = val_f1
     try:
         roc_auc = roc_auc_score(all_labels, all_probs)
-    except:
-        roc_auc = 0
+    except ValueError:
+        roc_auc = 0.0
     try:
         tn, fp, fn, tp = confusion_matrix(all_labels, all_preds).ravel()
-        specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
-        sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0
-    except:
-        specificity = sensitivity = 0
+        specificity = tn / (tn + fp) if (tn + fp) > 0 else 0.0
+        sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+    except ValueError:
+        specificity = sensitivity = 0.0
 
     for k, v in zip(fold_metrics.keys(), [acc, prec, rec, f1, roc_auc, specificity, sensitivity]):
         fold_metrics[k].append(v)
@@ -201,7 +211,7 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(indices, targets)):
     plt.savefig(output_dir / "loss_plots" / f"loss_fold{fold + 1}.png")
     plt.clf()
 
-# ✅ En iyi model ve metrikler kayıt
+# ✅ Model ve metrikler kayıt
 torch.save(best_model_state, best_model_path)
 print(f"\n💾 Best model saved to: {best_model_path} (F1: {best_f1:.4f})")
 
