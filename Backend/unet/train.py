@@ -11,8 +11,36 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
 from tqdm import tqdm
+from pathlib import Path
 
-# --- MODEL CLASS ---
+# ✅ Yol tanımları (dinamik)
+project_root = Path(__file__).resolve().parents[1]  # Backend klasörü
+base_path = project_root / "dataset" / "augmented_train"
+output_dir = project_root /  "outputs" / "train"
+
+# ✅ Yol var mı kontrolü
+if not base_path.exists():
+    raise FileNotFoundError(f"❌ Veri dizini bulunamadı: {base_path}")
+
+# ✅ Çıktı dizinlerini oluştur
+(output_dir / "confusion_matrices").mkdir(parents=True, exist_ok=True)
+(output_dir / "roc_curves").mkdir(parents=True, exist_ok=True)
+(output_dir / "loss_plots").mkdir(parents=True, exist_ok=True)
+
+class_map_path = output_dir / "class_map.pth"
+best_model_path = output_dir / "best_model.pth"
+fold_metrics_path = output_dir / "fold_metrics.csv"
+
+# ✅ Transformlar
+transform = transforms.Compose([
+    transforms.Resize((299, 299)),
+    transforms.RandomHorizontalFlip(),
+    transforms.RandomRotation(10),
+    transforms.RandomAffine(degrees=0, translate=(0.05, 0.05)),
+    transforms.ToTensor(),
+])
+
+# ✅ U-Net sınıfı
 class UNetEncoderClassifier(nn.Module):
     def __init__(self, num_classes=2):
         super().__init__()
@@ -66,27 +94,7 @@ def smooth_curve(points, factor=0.8):
             smoothed.append(point)
     return smoothed
 
-# --- PATH SETUP ---
-base_path = r"/Backend/dataset/augmented_train"
-output_dir = r"/Backend/unet/outputs/train"
-class_map_path = os.path.join(output_dir, "class_map.pth")
-best_model_path = os.path.join(output_dir, "best_model.pth")
-fold_metrics_path = os.path.join(output_dir, "fold_metrics.csv")
-
-os.makedirs(os.path.join(output_dir, "confusion_matrices"), exist_ok=True)
-os.makedirs(os.path.join(output_dir, "roc_curves"), exist_ok=True)
-os.makedirs(os.path.join(output_dir, "loss_plots"), exist_ok=True)
-
-# --- TRANSFORMS ---
-transform = transforms.Compose([
-    transforms.Resize((299, 299)),
-    transforms.RandomHorizontalFlip(),
-    transforms.RandomRotation(10),
-    transforms.RandomAffine(degrees=0, translate=(0.05, 0.05)),
-    transforms.ToTensor(),
-])
-
-# --- DATASET SETUP ---
+# ✅ Veri seti
 dataset = datasets.ImageFolder(base_path, transform=transform)
 class_map = dataset.class_to_idx
 torch.save(class_map, class_map_path)
@@ -101,7 +109,7 @@ csv_data = []
 best_f1 = 0
 best_model_state = None
 
-# --- CROSS-VALIDATION ---
+# ✅ K-Fold Eğitim
 for fold, (train_idx, val_idx) in enumerate(skf.split(indices, targets)):
     print(f"\n🌀 Fold {fold + 1}/{k_folds}")
     train_loader = DataLoader(Subset(dataset, train_idx), batch_size=8, shuffle=True)
@@ -113,15 +121,10 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(indices, targets)):
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=3, factor=0.5)
     criterion = nn.CrossEntropyLoss(label_smoothing=0.05)
 
-    fold_train_losses = []
-    fold_val_losses = []
+    fold_train_losses, fold_val_losses = [], []
     best_val_f1 = 0
     patience = 10
     patience_counter = 0
-
-    # ✅ Statik analiz hatalarını önlemek için
-    all_preds, all_labels, all_probs = [], [], []
-    val_f1 = 0
 
     for epoch in range(100):
         model.train()
@@ -137,6 +140,7 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(indices, targets)):
         epoch_train_loss = running_loss / len(train_idx)
         fold_train_losses.append(epoch_train_loss)
 
+        # ✅ Validation
         model.eval()
         val_loss = 0.0
         all_preds, all_labels, all_probs = [], [], []
@@ -154,6 +158,7 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(indices, targets)):
                     all_probs.extend(probs.max(dim=1)[0].cpu().numpy())
                 all_preds.extend(preds)
                 all_labels.extend(labels.cpu().numpy())
+
         epoch_val_loss = val_loss / len(val_idx)
         fold_val_losses.append(epoch_val_loss)
         scheduler.step(epoch_val_loss)
@@ -168,68 +173,66 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(indices, targets)):
         else:
             patience_counter += 1
             if patience_counter >= patience:
-                print(f"⏹️ Early stopping (F1-based) at epoch {epoch + 1}")
+                print(f"⏹️ Early stopping at epoch {epoch + 1}")
                 break
 
-    # --- METRICS HESAPLAMA ---
-    acc = accuracy_score(all_labels, all_preds) if all_labels else 0
-    prec = precision_score(all_labels, all_preds, average='macro', zero_division=0) if all_labels else 0
-    rec = recall_score(all_labels, all_preds, average='macro', zero_division=0) if all_labels else 0
+    # ✅ Metrikler
+    acc = accuracy_score(all_labels, all_preds)
+    prec = precision_score(all_labels, all_preds, average='macro', zero_division=0)
+    rec = recall_score(all_labels, all_preds, average='macro', zero_division=0)
     f1 = val_f1
-    roc_auc = roc_auc_score(all_labels, all_probs) if all_labels else 0
-
+    try:
+        roc_auc = roc_auc_score(all_labels, all_probs)
+    except:
+        roc_auc = 0
     try:
         tn, fp, fn, tp = confusion_matrix(all_labels, all_preds).ravel()
         specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
         sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0
-    except ValueError:
-        specificity = 0
-        sensitivity = 0
+    except:
+        specificity = sensitivity = 0
 
-    for key, val in zip(fold_metrics.keys(), [acc, prec, rec, f1, roc_auc, specificity, sensitivity]):
-        fold_metrics[key].append(val)
+    for k, v in zip(fold_metrics.keys(), [acc, prec, rec, f1, roc_auc, specificity, sensitivity]):
+        fold_metrics[k].append(v)
     csv_data.append([fold + 1, acc, prec, rec, f1, roc_auc, specificity, sensitivity])
 
     if f1 > best_f1:
         best_f1 = f1
         best_model_state = model.state_dict()
 
-    # --- PLOTTING ---
+    # ✅ Grafikler
     cm = confusion_matrix(all_labels, all_preds)
     sns.heatmap(cm, annot=True, fmt='d', cmap="Blues", xticklabels=class_map.keys(), yticklabels=class_map.keys())
-    plt.title(f"Fold {fold+1} - Confusion Matrix")
-    plt.savefig(os.path.join(output_dir, "confusion_matrices", f"confusion_matrix_fold{fold+1}.png"))
+    plt.title(f"Confusion Matrix - Fold {fold + 1}")
+    plt.savefig(output_dir / "confusion_matrices" / f"cm_fold{fold + 1}.png")
     plt.clf()
 
     fpr, tpr, _ = roc_curve(all_labels, all_probs)
-    plt.plot(fpr, tpr, label=f"Fold {fold+1} AUC={roc_auc:.2f}")
+    plt.plot(fpr, tpr, label=f"AUC={roc_auc:.2f}")
     plt.plot([0, 1], [0, 1], linestyle="--", color='gray')
-    plt.title("ROC Curve")
-    plt.xlabel("False Positive Rate")
-    plt.ylabel("True Positive Rate")
+    plt.xlabel("FPR")
+    plt.ylabel("TPR")
+    plt.title(f"ROC Curve - Fold {fold + 1}")
     plt.legend()
-    plt.savefig(os.path.join(output_dir, "roc_curves", f"roc_curve_fold{fold+1}.png"))
+    plt.savefig(output_dir / "roc_curves" / f"roc_fold{fold + 1}.png")
     plt.clf()
 
     plt.plot(smooth_curve(fold_train_losses), label="Train Loss")
-    plt.plot(smooth_curve(fold_val_losses), label="Validation Loss", linestyle='--')
-    plt.title(f"Loss Curve - Fold {fold+1} (Smoothed)")
-    plt.xlabel("Epoch")
-    plt.ylabel("Loss")
+    plt.plot(smooth_curve(fold_val_losses), label="Val Loss")
+    plt.title(f"Loss Curve - Fold {fold + 1}")
     plt.legend()
-    plt.savefig(os.path.join(output_dir, "loss_plots", f"loss_curve_fold{fold+1}.png"))
+    plt.savefig(output_dir / "loss_plots" / f"loss_fold{fold + 1}.png")
     plt.clf()
 
-# --- FINAL MODEL KAYIT ---
+# ✅ Model ve CSV kayıt
 torch.save(best_model_state, best_model_path)
-print(f"\n💾 Best model saved as '{best_model_path}' (F1: {best_f1:.4f})")
+print(f"\n💾 Best model saved: {best_model_path} (F1: {best_f1:.4f})")
 
 with open(fold_metrics_path, "w", newline="") as f:
     writer = csv.writer(f)
     writer.writerow(["Fold", "Accuracy", "Precision", "Recall", "F1", "ROC_AUC", "Specificity", "Sensitivity"])
     writer.writerows(csv_data)
 
-print(f"\n📄 Fold metrics saved to '{fold_metrics_path}'")
 print("\n📋 Average Results:")
 for metric, values in fold_metrics.items():
     print(f"{metric.capitalize()}: {np.mean(values):.4f}")
