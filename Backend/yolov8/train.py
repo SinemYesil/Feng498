@@ -21,7 +21,7 @@ class Train:
 
         results = model.train(
             data=str(self.split_dir),
-            epochs=50,
+            epochs=100,
             imgsz=224,
             batch=4,
             lr0=0.001,
@@ -63,8 +63,8 @@ class Train:
 # 📌 Çalıştırmak için
 if __name__ == "__main__":
     trainer = Train(
-        source_dir="C:/Users/ceren/PycharmProjects/Feng498/dataset/augmented_train",
-        yolov8_dir="C:/Users/ceren/PycharmProjects/yolov8/dataset",
+        source_dir="C:/Users/ceren/PycharmProjects/Feng498/Backend/dataset/augmented_train",
+        yolov8_dir="C:/Users/ceren/PycharmProjects/Feng498/Backend/yolov8/dataset",
         split_ratio=0.8,
         seed=42
     )

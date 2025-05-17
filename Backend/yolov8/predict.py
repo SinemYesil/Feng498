@@ -166,8 +166,8 @@ class Predict:
 # 📌 Örnek kullanım
 if __name__ == "__main__":
     predictor = Predict(
-        model_path="C:/Users/ceren/PycharmProjects/Feng498/yolov8/outputs/yolov8_cls_run/weights/best.pt",
-        test_dir="C:/Users/ceren/PycharmProjects/Feng498/dataset/test",
-        output_dir="C:/Users/ceren/PycharmProjects/Feng498/yolov8/predictions"
+        model_path="C:/Users/ceren/PycharmProjects/Feng498/Backend/yolov8/outputs/yolov8_cls_run/weights/best.pt",
+        test_dir="C:/Users/ceren/PycharmProjects/Feng498/Backend/dataset/test",
+        output_dir="C:/Users/ceren/PycharmProjects/Feng498/Backend/yolov8/outputs/predict"
     )
     predictor.evaluate()

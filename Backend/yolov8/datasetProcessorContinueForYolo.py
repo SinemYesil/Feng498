@@ -62,8 +62,8 @@ class DatasetProcessorContinueForYolo:
 # 📌 Örnek kullanım
 if __name__ == "__main__":
     processor = DatasetProcessorContinueForYolo(
-        source_dir="C:/Users/ceren/PycharmProjects/Feng498/dataset/augmented_train",
-        yolov8_dataset_dir="C:/Users/ceren/PycharmProjects/Feng498/yolov8/dataset",
+        source_dir="C:/Users/ceren/PycharmProjects/Feng498/Backend/dataset/augmented_train",
+        yolov8_dataset_dir="C:/Users/ceren/PycharmProjects/Feng498/Backend/yolov8/dataset",
         split_ratio=0.8
     )
     processor.prepare()

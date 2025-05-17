@@ -4,17 +4,18 @@ import numpy as np
 import matplotlib.pyplot as plt
 import random
 
-# 📁 Ana dataset yolu ve preview yolu
-base_dataset_dir = Path("C:/Users/yilma/Desktop/Feng498/dataset")
-preview_dir = base_dataset_dir / "preview"
-preview_dir.mkdir(exist_ok=True, parents=True)
+# 📁 Ana dataset klasörü
+base_dataset_dir = Path("C:/Users/ceren/PycharmProjects/Feng498/Backend/dataset")
+
+# 📁 preview çıktısı dataset ile aynı seviyede olacak
+preview_dir = base_dataset_dir.parent / "preprocessingOutputExample"  # ✅ .parent ile "Backend/" klasörüne çıktık
+preview_dir.mkdir(parents=True, exist_ok=True)
 
 classes = ['AMD', 'NO']
 
 # 🧽 Yardımcı
-
 def load_image_as_array(path):
-    img = Image.open(path).convert("RGB").resize((224, 224))
+    img = Image.open(path).convert("RGB").resize((299, 299))  # Inception için uygun
     return np.asarray(img, dtype=np.float32) / 255.0
 
 # 📦 Her sınıftan rastgele 2 örnek seç
@@ -27,10 +28,8 @@ for cls in classes:
     for img_path in selected_images:
         original_img = load_image_as_array(img_path)
 
-        # Contrast maskesi (maksimum kanal değeri ile)
+        # Contrast maskesi
         contrast_mask = np.max(original_img, axis=2, keepdims=True)
-
-        # Contrast çarpımı
         contrast_img = np.clip(original_img * contrast_mask, 0, 1)
 
         examples.append({
@@ -39,16 +38,13 @@ for cls in classes:
             "contrast": contrast_img
         })
 
-# 🎨 Grafik oluştur
+# 🎨 Görsel çizimi
 fig, axs = plt.subplots(len(examples), 2, figsize=(12, len(examples)*5))
-titles = ["Original", "Original x Contrast Mask"]
+titles = ["Original Image", "After Contrast Mask Applied"]
 
 for i, ex in enumerate(examples):
     label = ex["class"]
-    variations = [
-        ex["original"],
-        ex["contrast"]
-    ]
+    variations = [ex["original"], ex["contrast"]]
 
     for j in range(2):
         axs[i, j].imshow(variations[j])
@@ -59,11 +55,10 @@ for i, ex in enumerate(examples):
             axs[i, j].text(-0.1, 0.5, label, fontsize=14, fontweight='bold',
                            ha='right', va='center', transform=axs[i, j].transAxes, rotation=90)
 
-# Genel başlık
-plt.suptitle("Preprocessing Visualization (Original x Contrast Only)", fontsize=18, fontweight='bold')
-plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+plt.suptitle("Preprocessing Visualization: Contrast Enhancement", fontsize=18, fontweight='bold')
+plt.tight_layout(rect=(0, 0.03, 1, 0.95))
 
-# Kaydet ve göster
-output_path = preview_dir / "visualization_contrast_only.png"
+# ✅ Görseli kaydet
+output_path = preview_dir / "preprocessing_contrast_visual_comparison.png"
 plt.savefig(output_path, dpi=300)
 plt.show()

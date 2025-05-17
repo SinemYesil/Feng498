@@ -1,4 +1,3 @@
-import os
 import csv
 import torch
 import torch.nn as nn
@@ -29,9 +28,15 @@ class UNetEncoderClassifier(nn.Module):
         self.global_pool = nn.AdaptiveAvgPool2d((1, 1))
         self.classifier = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(512, 128),
+            nn.Linear(512, 512),
             nn.ReLU(),
             nn.Dropout(0.5),
+            nn.Linear(512, 256),
+            nn.ReLU(),
+            nn.Dropout(0.4),
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Dropout(0.3),
             nn.Linear(128, num_classes)
         )
 
@@ -53,8 +58,8 @@ class UNetEncoderClassifier(nn.Module):
         return x
 
 
-class Predictor:
-    def __init__(self, test_data_path, model_path, class_map_path, output_dir, batch_size=16, device=None):
+class Predict:
+    def __init__(self, test_data_path, model_path, class_map_path, output_dir, batch_size=8, device=None):
         self.test_path = test_data_path
         self.model_path = model_path
         self.class_map_path = class_map_path
@@ -62,18 +67,17 @@ class Predictor:
         self.batch_size = batch_size
         self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        # 📁 outputs ve predictions klasörleri
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        self.predictions_dir = self.output_dir.parent / "predictions"
+        self.predictions_dir = self.output_dir / "predictions"
         self.predictions_dir.mkdir(parents=True, exist_ok=True)
 
-        # 🗂️ Sınıf eşlemesi
+        # 📂 Class indexleri
         self.class_map = torch.load(self.class_map_path)
         self.idx_to_class = {v: k for k, v in self.class_map.items()}
 
-        # 🔁 Transform
+        # 📐 Görüntü dönüşümleri
         self.transform = transforms.Compose([
-            transforms.Resize((224, 224)),
+            transforms.Resize((299, 299)),
             transforms.ToTensor()
         ])
 
@@ -81,7 +85,7 @@ class Predictor:
         self.test_dataset = datasets.ImageFolder(self.test_path, transform=self.transform)
         self.test_loader = DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=False)
 
-        # 🧠 U-Net tabanlı sınıflandırıcı model
+        # 🧠 Modeli yükle
         self.model = UNetEncoderClassifier(num_classes=len(self.class_map))
         self.model.load_state_dict(torch.load(self.model_path, map_location=self.device))
         self.model.to(self.device)
@@ -116,7 +120,7 @@ class Predictor:
         f1 = f1_score(y_true, y_pred, average='macro', zero_division=0)
         roc_auc = roc_auc_score(y_true, y_probs[:, 1]) if y_probs.shape[1] == 2 else roc_auc_score(y_true, y_probs, multi_class="ovo")
 
-        # 🔍 Sensitivity & Specificity
+        # Ek metrikler
         try:
             tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
             specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
@@ -125,7 +129,7 @@ class Predictor:
             specificity = 0
             sensitivity = 0
 
-        # 📊 Confusion matrix
+        # 🔹 Confusion Matrix
         cm = confusion_matrix(y_true, y_pred)
         sns.heatmap(cm, annot=True, fmt='d', cmap="Blues",
                     xticklabels=list(self.idx_to_class.values()),
@@ -136,7 +140,7 @@ class Predictor:
         plt.savefig(self.output_dir / "confusion_matrix.png")
         plt.clf()
 
-        # 📈 ROC curve
+        # 🔹 ROC Curve
         if y_probs.shape[1] == 2:
             fpr, tpr, _ = roc_curve(y_true, y_probs[:, 1])
             plt.plot(fpr, tpr, label=f"AUC={roc_auc:.2f}")
@@ -148,7 +152,7 @@ class Predictor:
             plt.savefig(self.output_dir / "roc_curve.png")
             plt.clf()
 
-        # 💾 predictions.csv → predictions/ klasörüne
+        # 🔹 predictions.csv
         with open(self.predictions_dir / "predictions.csv", "w", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(["Filename", "TrueLabel", "PredictedLabel", "Confidence"])
@@ -161,13 +165,13 @@ class Predictor:
                     f"{confidence:.4f}"
                 ])
 
-        # 💾 test_metrics.csv → predictions/ klasörüne
+        # 🔹 test_metrics.csv
         with open(self.predictions_dir / "test_metrics.csv", "w", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(["Accuracy", "Precision", "Recall", "F1", "ROC_AUC", "Specificity", "Sensitivity"])
             writer.writerow([acc, prec, rec, f1, roc_auc, specificity, sensitivity])
 
-        # 📢 Console Output
+        # 📊 Ekrana yazdır
         correct = np.sum(y_true == y_pred)
         total = len(y_true)
         print(f"\n📊 Total Images: {total}")
@@ -176,17 +180,17 @@ class Predictor:
         print(f"🎯 Accuracy: {acc * 100:.2f}%")
 
 
-# ▶️ Ana çalıştırma bloğu
+# ▶️ Ana çalıştırma
 if __name__ == "__main__":
-    test_dir_path = "/Users/ceren/PycharmProjects/Feng498/dataset/test"
-    results_output_dir = "/Users/ceren/PycharmProjects/Feng498/unet/outputs"
-    model_file_path = os.path.join(results_output_dir, "best_model.pth")
-    class_index_map_path = os.path.join(results_output_dir, "class_map.pth")
+    test_dir_path = "/Users/ceren/PycharmProjects/Feng498/Backend/dataset/test"
+    results_output_dir = "/Users/ceren/PycharmProjects/Feng498/Backend/unet/outputs/predict"
+    model_file_path = "/Users/ceren/PycharmProjects/Feng498/Backend/unet/outputs/train/best_model.pth"
+    class_index_map_path = "/Users/ceren/PycharmProjects/Feng498/Backend/unet/outputs/train/class_map.pth"
 
-    predictor = Predictor(
+    predict = Predict(
         test_data_path=test_dir_path,
         model_path=model_file_path,
         class_map_path=class_index_map_path,
         output_dir=results_output_dir
     )
-    predictor.evaluate()
+    predict.evaluate()

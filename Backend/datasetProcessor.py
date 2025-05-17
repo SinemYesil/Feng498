@@ -59,7 +59,7 @@ class DatasetProcessor:
             for img_path in tqdm(images, desc=f"{cls} için preprocessing"):
                 try:
                     with Image.open(img_path) as img:
-                        img = img.convert("RGB").resize((224, 224))
+                        img = img.convert("RGB").resize((299, 299))  # ✅ Güncellendi
                         img_np = np.asarray(img, dtype=np.float32) / 255.0
 
                         Ib = self.apply_contrast_mask(img_np)
@@ -93,7 +93,7 @@ class DatasetProcessor:
     def augment_data(self):
         print("🎨 Augmentasyon başlıyor...")
         augment_transforms = transforms.Compose([
-            transforms.Resize((224, 224)),
+            transforms.Resize((299, 299)),  # ✅ Güncellendi
             transforms.RandomHorizontalFlip(p=0.5),
             transforms.RandomRotation(degrees=15)
         ])
@@ -103,7 +103,7 @@ class DatasetProcessor:
             output_dir.mkdir(parents=True, exist_ok=True)
             for img_path in tqdm(input_dir.glob('*'), desc=f"{cls} için augmentasyon"):
                 with Image.open(img_path) as image:
-                    image = image.convert("RGB").resize((224, 224))
+                    image = image.convert("RGB").resize((299, 299))  # ✅ Güncellendi
                     image.save(output_dir / img_path.name)
                     for i in range(self.num_augmented_versions):
                         aug_img = augment_transforms(image)
@@ -116,5 +116,5 @@ class DatasetProcessor:
         self.augment_data()
 
 if __name__ == '__main__':
-    processor = DatasetProcessor(original_dir='C:/Users/ceren/PycharmProjects/Feng498/dataset')
+    processor = DatasetProcessor(original_dir='dataset')
     processor.process()
