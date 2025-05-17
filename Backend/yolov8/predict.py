@@ -71,7 +71,7 @@ class Predict:
 
             for img_path in images:
                 try:
-                    result = self.model(img_path, imgsz=224, verbose=False)[0]
+                    result = self.model(img_path, imgsz=299, verbose=False)[0]
                     pred_idx = int(result.probs.top1)
                     prob_tensor = result.probs.data
 

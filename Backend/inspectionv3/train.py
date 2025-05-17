@@ -54,6 +54,7 @@ transform = transforms.Compose([
     transforms.Resize((299, 299)),
     transforms.RandomHorizontalFlip(),
     transforms.RandomRotation(10),
+    transforms.RandomAffine(degrees=0, translate=(0.05, 0.05)),
     transforms.ToTensor(),
 ])
 

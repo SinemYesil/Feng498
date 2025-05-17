@@ -22,7 +22,7 @@ class Train:
         results = model.train(
             data=str(self.split_dir),
             epochs=100,
-            imgsz=224,
+            imgsz=299,
             batch=4,
             lr0=0.001,
             patience=10,
