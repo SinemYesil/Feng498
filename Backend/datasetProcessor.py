@@ -93,21 +93,29 @@ class DatasetProcessor:
     def augment_data(self):
         print("🎨 Augmentasyon başlıyor...")
         augment_transforms = transforms.Compose([
-            transforms.Resize((299, 299)),  # ✅ Güncellendi
-            transforms.RandomHorizontalFlip(p=0.5),
-            transforms.RandomRotation(degrees=15)
+            transforms.Resize((299, 299)),
+            transforms.RandomHorizontalFlip(),
+            transforms.RandomRotation(10),
+            transforms.RandomAffine(degrees=0, translate=(0.05, 0.05)),
+            transforms.ToTensor(),  # Augmentasyonları tensor üstünde yapıyoruz
         ])
+        to_pil = transforms.ToPILImage()  # Tensor → PIL dönüşümü için
+
         for cls in self.classes:
             input_dir = self.train_dir / cls
             output_dir = self.augmented_train_dir / cls
             output_dir.mkdir(parents=True, exist_ok=True)
+
             for img_path in tqdm(input_dir.glob('*'), desc=f"{cls} için augmentasyon"):
                 with Image.open(img_path) as image:
-                    image = image.convert("RGB").resize((299, 299))  # ✅ Güncellendi
+                    image = image.convert("RGB").resize((299, 299))
+                    # Orijinal resmi direkt kaydet
                     image.save(output_dir / img_path.name)
+
                     for i in range(self.num_augmented_versions):
-                        aug_img = augment_transforms(image)
-                        aug_img.save(output_dir / f"{img_path.stem}_aug{i}.jpg")
+                        aug_tensor = augment_transforms(image)  # Tensor olarak döner
+                        aug_img_pil = to_pil(aug_tensor)  # Tensor'dan PIL'e çevir
+                        aug_img_pil.save(output_dir / f"{img_path.stem}_aug{i}.jpg")
         print("✅ Augmentasyon tamamlandı.")
 
     def process(self):
